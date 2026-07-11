@@ -1,0 +1,71 @@
+# 复制为本目录下的 profiles.yaml 后填写密钥：
+#   cp config/profiles.example.yaml config/profiles.yaml
+#
+# 密钥推荐用环境变量或 api_key_file，不要把真实密钥提交进 git。
+
+active: free_1k
+
+profiles:
+  # 1. 公益生图 — 仅 1K，免费
+  free_1k:
+    type: openai_compatible
+    base_url: https://cch.yifan.ink/v1
+    api_key_env: IMAGE_GEN_FREE_API_KEY
+    # api_key_file: ./keys/free_1k.txt
+    # api_key: "sk-..."
+    model: gpt-image-2
+    timeout: 600
+    # 默认 false：不强制 response_format=b64_json（与 playground 一致）
+    # 需要时再设 true；客户端本身支持解析 b64_json 与 url
+    response_format_b64_json: false
+    options:
+      display_name: 公益生图
+      price: 免费
+      resolution: 仅 1K
+      recommended_sizes:
+        - "1024x1024"
+        - "1536x1024"
+        - "1024x1536"
+      note: 公益通道，只支持 1K 档位尺寸，请勿传 2K/4K
+
+  # 2. 付费生图一 — 仅 1K，约 0.015 元/张
+  paid_1k:
+    type: openai_compatible
+    base_url: https://cch.yifan.ink/v1
+    api_key_env: IMAGE_GEN_PAID1_API_KEY
+    # api_key_file: ./keys/paid_1k.txt
+    model: gpt-image-2
+    timeout: 600
+    response_format_b64_json: false
+    options:
+      display_name: 付费生图一
+      price: 约 0.015 元/张
+      resolution: 仅 1K
+      recommended_sizes:
+        - "1024x1024"
+        - "1536x1024"
+        - "1024x1536"
+      note: 付费 1K 通道，请勿传 2K/4K
+
+  # 3. 付费生图二 — 支持 2K / 4K，约 0.05 元/张
+  paid_hq:
+    type: openai_compatible
+    base_url: https://cch.yifan.ink/v1
+    api_key_env: IMAGE_GEN_PAID2_API_KEY
+    # api_key_file: ./keys/paid_hq.txt
+    model: gpt-image-2
+    timeout: 600
+    response_format_b64_json: false
+    options:
+      display_name: 付费生图二
+      price: 约 0.05 元/张
+      resolution: 支持 2K / 4K
+      recommended_sizes:
+        - "1024x1024"
+        - "1536x1024"
+        - "1024x1536"
+        - "2048x2048"
+        - "2048x1152"
+        - "3840x2160"
+        - "2160x3840"
+      note: 高清通道，可用 2K/4K；价格高于 1K 通道

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+.ruff_cache/
+
+# 本地密钥与真实配置（示例配置可提交）
+config/profiles.yaml
+config/key.txt
+**/key.txt
+*.pem
+
+# 生成输出
+output/*
+!output/.gitkeep
+
+# 本机异步任务
+jobs/

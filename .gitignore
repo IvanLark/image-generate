@@ -1,0 +1,23 @@
+# 本地密钥与环境
+**/key.txt
+**/*secret*
+.env
+.env.*
+
+# Python
+**/__pycache__/
+**/.venv/
+**/*.egg-info/
+**/dist/
+**/build/
+**/.ruff_cache/
+
+# 生成图片（仓库根目录及任意 output 目录内容）
+/output/
+output/
+
+# skill 本地配置与运行产物
+skills/image-generate/config/profiles.yaml
+skills/image-generate/output/*
+!skills/image-generate/output/.gitkeep
+skills/image-generate/jobs/

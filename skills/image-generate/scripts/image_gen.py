@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Skill 入口包装：优先用 uv run，保证依赖与可编辑安装一致。"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+
+
+def main() -> int:
+    env = os.environ.copy()
+    # 允许直接 python scripts/image_gen.py 时也能找到包
+    src = str(SKILL_ROOT / "src")
+    env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+    # 优先 uv run（本 skill 用 uv 管理依赖）
+    uv = _which("uv")
+    if uv:
+        cmd = [uv, "run", "--directory", str(SKILL_ROOT), "image-gen", *sys.argv[1:]]
+        return subprocess.call(cmd, env=env)
+
+    # 回退：已安装 image-gen 或 PYTHONPATH 可用
+    try:
+        from image_generate.cli import main as cli_main
+
+        return int(cli_main())
+    except ImportError:
+        print(
+            "错误: 未找到 uv，且无法 import image_generate。\n"
+            f"请在 {SKILL_ROOT} 执行: uv sync\n"
+            "然后使用: uv run image-gen ...",
+            file=sys.stderr,
+        )
+        return 1
+
+
+def _which(name: str) -> str | None:
+    from shutil import which
+
+    return which(name)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

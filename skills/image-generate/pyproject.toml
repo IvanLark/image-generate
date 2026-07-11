@@ -1,0 +1,25 @@
+[project]
+name = "image-generate"
+version = "0.1.0"
+description = "OpenAI 兼容图片生成 skill（gpt-image-2 /v1/images），支持多供应商 profile"
+readme = "README.md"
+authors = [
+    { name = "chenyifan", email = "3149107774@qq.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+image-gen = "image_generate.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.21",
+]
