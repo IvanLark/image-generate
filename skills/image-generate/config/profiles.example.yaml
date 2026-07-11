@@ -9,7 +9,7 @@ profiles:
   # 1. 公益生图 — 仅 1K，免费
   free_1k:
     type: openai_compatible
-    base_url: https://cch.yifan.ink/v1
+    base_url: https://api.example.com/v1
     api_key_env: IMAGE_GEN_FREE_API_KEY
     # api_key_file: ./keys/free_1k.txt
     # api_key: "sk-..."
@@ -31,7 +31,7 @@ profiles:
   # 2. 付费生图一 — 仅 1K，约 0.015 元/张
   paid_1k:
     type: openai_compatible
-    base_url: https://cch.yifan.ink/v1
+    base_url: https://api.example.com/v1
     api_key_env: IMAGE_GEN_PAID1_API_KEY
     # api_key_file: ./keys/paid_1k.txt
     model: gpt-image-2
@@ -50,7 +50,7 @@ profiles:
   # 3. 付费生图二 — 支持 2K / 4K，约 0.05 元/张
   paid_hq:
     type: openai_compatible
-    base_url: https://cch.yifan.ink/v1
+    base_url: https://api.example.com/v1
     api_key_env: IMAGE_GEN_PAID2_API_KEY
     # api_key_file: ./keys/paid_hq.txt
     model: gpt-image-2

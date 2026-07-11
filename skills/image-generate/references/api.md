@@ -7,7 +7,7 @@
 | 文生图 | `POST` | `{base_url}/images/generations` |
 | 图生图 | `POST` | `{base_url}/images/edits` |
 
-`base_url` 建议写成带 `/v1` 的形式，例如 `https://cch.yifan.ink/v1`。  
+`base_url` 建议写成带 `/v1` 的形式，例如 `https://api.example.com/v1`。  
 若只写到主机名，脚本会自动补 `/v1`。
 
 ## CLI / 请求参数
