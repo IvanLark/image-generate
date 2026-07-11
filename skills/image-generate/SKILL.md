@@ -9,8 +9,49 @@ description: >
 
 # Image Generate Skill
 
-用本仓库 `skills/image-generate` 里的 Python CLI 调用 **OpenAI 兼容**图片接口。  
+用本 skill 目录下的 Python CLI 调用 **OpenAI 兼容**图片接口。  
 默认模型 `gpt-image-2`，协议为 `POST .../images/generations` 与 `.../images/edits`。
+
+## 依赖初始化（首次必做）
+
+本 skill **需要安装 Python 依赖**后才能生成图片。Agent 在第一次调用前应检查 skill 根目录是否已就绪。
+
+Skill 根目录：本 `SKILL.md` 所在目录（例如仓库内 `skills/image-generate/`，或全局安装后的 skill 路径）。
+
+**有 [uv](https://github.com/astral-sh/uv)（推荐）：**
+
+```bash
+cd <skill根目录>
+uv sync
+# 之后一律优先：
+uv run image-gen <子命令> ...
+```
+
+**没有 uv，用 python / pip：**
+
+```bash
+cd <skill根目录>
+python3 -m pip install -e .
+# 或：pip install -e .
+# 之后：
+python3 -m image_generate.cli <子命令> ...
+# 也可：
+python3 scripts/image_gen.py <子命令> ...
+```
+
+依赖：`httpx`、`pyyaml`（见 `pyproject.toml`）。  
+Python ≥ 3.11。
+
+**调用约定：**
+
+| 环境 | 推荐命令 |
+|------|----------|
+| 已安装 `uv` | `uv run image-gen ...` |
+| 无 `uv`，已 `pip install -e .` | `python3 -m image_generate.cli ...` 或 `python3 scripts/image_gen.py ...` |
+
+包装脚本 `scripts/image_gen.py`：检测到 `uv` 时会走 `uv run`；无 `uv` 时尝试直接 import 本包（需已按上面装过依赖）。
+
+若出现 `ModuleNotFoundError: httpx` / `image_generate` 等，先回到本节做 `uv sync` 或 `pip install -e .`，再重试出图。
 
 ## 同步 vs 异步（必读）
 
@@ -44,19 +85,21 @@ description: >
 ## 目录与入口
 
 ```text
-skills/image-generate/
+<skill根目录>/          # 本 SKILL.md 所在目录
+  config/
+  scripts/image_gen.py
+  src/image_generate/
+  references/
 ```
 
+初始化依赖后自检：
+
 ```bash
-cd skills/image-generate
-uv sync
+cd <skill根目录>
+# 有 uv：
 uv run image-gen --help
-```
-
-包装脚本：
-
-```bash
-python skills/image-generate/scripts/image_gen.py submit generate --prompt "..." --json
+# 无 uv：
+python3 -m image_generate.cli --help
 ```
 
 ### 子命令一览
@@ -72,11 +115,13 @@ python skills/image-generate/scripts/image_gen.py submit generate --prompt "..."
 | `edit` | 同步图生图 |
 | `profiles` | 列出供应商配置 |
 
+下文示例默认写 `uv run image-gen`；无 `uv` 时把整段换成 `python3 -m image_generate.cli` 即可。
+
 ## 配置（多供应商）
 
 ```bash
-cp skills/image-generate/config/profiles.example.yaml \
-   skills/image-generate/config/profiles.yaml
+cd <skill根目录>
+cp config/profiles.example.yaml config/profiles.yaml
 ```
 
 编辑 `profiles.yaml`：`type`、`base_url`、密钥、`model`。  
@@ -85,20 +130,20 @@ cp skills/image-generate/config/profiles.example.yaml \
 环境变量：
 
 - `IMAGE_GENERATE_CONFIG`：配置文件路径
-- `IMAGE_GENERATE_JOBS_DIR`：异步任务目录（默认 `skills/image-generate/jobs`）
+- `IMAGE_GENERATE_JOBS_DIR`：异步任务目录（默认 skill 内 `jobs/`）
 
 **当前 type**：`openai_compatible`
 
 ## Agent 推荐流程（异步）
 
-1. 确认 `config/profiles.yaml` 与密钥可用；**不要**让用户把完整密钥贴进聊天。
+1. **依赖已安装**（见上文「依赖初始化」）；`config/profiles.yaml` 与密钥可用。**不要**让用户把完整密钥贴进聊天。
 2. 提交任务（数秒内结束）：
 
 ```bash
-cd skills/image-generate
+cd <skill根目录>
 uv run image-gen submit generate \
   --prompt "你的提示词" \
-  --out ../../output/xxx.png \
+  --out /path/to/output.png \
   --json
 ```
 
@@ -132,9 +177,10 @@ uv run image-gen status <job_id> --json
 ## 同步流程（人用）
 
 ```bash
+cd <skill根目录>
 uv run image-gen generate \
   --prompt "你的提示词" \
-  --out ../../output/xxx.png
+  --out /path/to/output.png
 ```
 
 成功时 stdout **每行一个绝对路径**。  
@@ -167,6 +213,7 @@ uv run image-gen generate \
 ## 其它示例
 
 ```bash
+cd <skill根目录>
 uv run image-gen profiles
 uv run image-gen generate --help
 uv run image-gen list

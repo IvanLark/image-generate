@@ -30,9 +30,13 @@ def main() -> int:
         return int(cli_main())
     except ImportError:
         print(
-            "错误: 未找到 uv，且无法 import image_generate。\n"
-            f"请在 {SKILL_ROOT} 执行: uv sync\n"
-            "然后使用: uv run image-gen ...",
+            "错误: 未找到 uv，且无法 import image_generate（依赖未安装）。\n"
+            f"请在 skill 根目录初始化依赖：\n"
+            f"  有 uv:  cd {SKILL_ROOT} && uv sync\n"
+            f"          然后: uv run image-gen ...\n"
+            f"  无 uv:  cd {SKILL_ROOT} && python3 -m pip install -e .\n"
+            f"          然后: python3 -m image_generate.cli ...\n"
+            f"                 或: python3 scripts/image_gen.py ...",
             file=sys.stderr,
         )
         return 1
