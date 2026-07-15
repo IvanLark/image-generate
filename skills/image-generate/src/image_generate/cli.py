@@ -33,6 +33,7 @@ from image_generate.runner import (
     submit_generate_job,
 )
 from image_generate.save import SaveError, build_output_paths
+from image_generate.transparent import TransparentError, parse_color
 
 DEFAULT_SIZE = "auto"
 DEFAULT_QUALITY = "auto"
@@ -79,6 +80,14 @@ HELP_INPUT_FIDELITY = (
     "输入保真度，仅 edit。默认不传。"
     "low=较低保真; high=更贴近原图细节（可能更贵/更慢，视模型支持）。"
 )
+HELP_TRANSPARENT = (
+    "可选本地抠图：指定要去掉的背景色，落盘后处理为透明 PNG。"
+    "不传则不做抠图。"
+    "颜色由调用方明确给出（AI 已知提示词里用了什么纯色背景时直接填该色），"
+    "不会从提示词自动识别。"
+    "支持: green/magenta/white/black 等名称，#00FF00，或 0,255,0。"
+    "开启时强制 output_format=png。"
+)
 
 
 def _die(msg: str, code: int = 1) -> None:
@@ -117,6 +126,12 @@ def _add_common_args(p: argparse.ArgumentParser, *, with_dry_run: bool = True) -
     p.add_argument("--out", default=None, help=HELP_OUT)
     p.add_argument("--out-dir", default=None, help=HELP_OUT_DIR)
     p.add_argument("--force", action="store_true", help=HELP_FORCE)
+    p.add_argument(
+        "--transparent",
+        default=None,
+        metavar="COLOR",
+        help=HELP_TRANSPARENT,
+    )
     if with_dry_run:
         p.add_argument(
             "--dry-run",
@@ -262,6 +277,20 @@ def _validate_n(n: int) -> None:
         _die("--n 应在 1～10 之间")
 
 
+def _normalize_transparent(value: str | None) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        parse_color(value)  # 尽早校验
+    except TransparentError as exc:
+        _die(str(exc))
+    return str(value).strip()
+
+
+def _effective_output_format(output_format: str, transparent: str | None) -> str:
+    return "png" if transparent else output_format
+
+
 def _cmd_profiles(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(args.config, require_api_key=False)
@@ -290,6 +319,8 @@ def _cmd_profiles(args: argparse.Namespace) -> int:
 
 def _cmd_generate(args: argparse.Namespace) -> int:
     _validate_n(args.n)
+    transparent = _normalize_transparent(getattr(args, "transparent", None))
+    output_format = _effective_output_format(args.output_format, transparent)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=not args.dry_run)
@@ -305,7 +336,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
             out=args.out,
             out_dir=args.out_dir,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             default_name="output",
         )
     except SaveError as exc:
@@ -317,7 +348,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         "n": args.n,
         "size": args.size,
         "quality": args.quality,
-        "output_format": args.output_format,
+        "output_format": output_format,
         "moderation": args.moderation,
     }
     if profile.response_format_b64_json:
@@ -331,6 +362,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
                 "type": profile.type,
                 "endpoint": "images/generations",
                 "body": body,
+                "transparent": transparent,
                 "outputs": [str(p) for p in paths],
             }
         )
@@ -344,12 +376,20 @@ def _cmd_generate(args: argparse.Namespace) -> int:
             size=args.size,
             quality=args.quality,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             moderation=args.moderation,
             output_paths=paths,
             force=args.force,
+            transparent=transparent,
         )
-    except (ConfigError, ProviderError, SaveError, ValueError, NotImplementedError) as exc:
+    except (
+        ConfigError,
+        ProviderError,
+        SaveError,
+        TransparentError,
+        ValueError,
+        NotImplementedError,
+    ) as exc:
         _die(str(exc))
     except Exception as exc:  # noqa: BLE001
         _die(f"未预期错误: {exc}")
@@ -361,6 +401,8 @@ def _cmd_generate(args: argparse.Namespace) -> int:
 
 def _cmd_edit(args: argparse.Namespace) -> int:
     _validate_n(args.n)
+    transparent = _normalize_transparent(getattr(args, "transparent", None))
+    output_format = _effective_output_format(args.output_format, transparent)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=not args.dry_run)
@@ -376,7 +418,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             out=args.out,
             out_dir=args.out_dir,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             default_name="edit",
         )
     except SaveError as exc:
@@ -388,11 +430,12 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         "n": args.n,
         "size": args.size,
         "quality": args.quality,
-        "output_format": args.output_format,
+        "output_format": output_format,
         "moderation": args.moderation,
         "images": args.images,
         "mask": args.mask,
         "input_fidelity": args.input_fidelity,
+        "transparent": transparent,
     }
 
     if args.dry_run:
@@ -418,13 +461,21 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             size=args.size,
             quality=args.quality,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             moderation=args.moderation,
             input_fidelity=args.input_fidelity,
             output_paths=paths,
             force=args.force,
+            transparent=transparent,
         )
-    except (ConfigError, ProviderError, SaveError, ValueError, NotImplementedError) as exc:
+    except (
+        ConfigError,
+        ProviderError,
+        SaveError,
+        TransparentError,
+        ValueError,
+        NotImplementedError,
+    ) as exc:
         _die(str(exc))
     except Exception as exc:  # noqa: BLE001
         _die(f"未预期错误: {exc}")
@@ -436,6 +487,8 @@ def _cmd_edit(args: argparse.Namespace) -> int:
 
 def _cmd_submit_generate(args: argparse.Namespace) -> int:
     _validate_n(args.n)
+    transparent = _normalize_transparent(getattr(args, "transparent", None))
+    output_format = _effective_output_format(args.output_format, transparent)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=True)
@@ -453,11 +506,12 @@ def _cmd_submit_generate(args: argparse.Namespace) -> int:
             size=args.size,
             quality=args.quality,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             moderation=args.moderation,
             out=args.out,
             out_dir=args.out_dir,
             force=args.force,
+            transparent=transparent,
         )
     except (JobError, SaveError, ConfigError) as exc:
         _die(str(exc))
@@ -484,6 +538,8 @@ def _cmd_submit_generate(args: argparse.Namespace) -> int:
 
 def _cmd_submit_edit(args: argparse.Namespace) -> int:
     _validate_n(args.n)
+    transparent = _normalize_transparent(getattr(args, "transparent", None))
+    output_format = _effective_output_format(args.output_format, transparent)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=True)
@@ -504,11 +560,12 @@ def _cmd_submit_edit(args: argparse.Namespace) -> int:
             size=args.size,
             quality=args.quality,
             n=args.n,
-            output_format=args.output_format,
+            output_format=output_format,
             moderation=args.moderation,
             out=args.out,
             out_dir=args.out_dir,
             force=args.force,
+            transparent=transparent,
         )
     except (JobError, SaveError, ConfigError) as exc:
         _die(str(exc))

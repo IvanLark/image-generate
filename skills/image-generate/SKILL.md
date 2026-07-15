@@ -201,6 +201,22 @@ uv run image-gen generate \
 | `--profile` | 配置 `active` | 如 `free_1k` / `paid_1k` / `paid_hq` | 选供应商 |
 | `--timeout` | profile（常 600） | 秒 | HTTP 读超时 |
 | `--input-fidelity` | 不传 | `low` / `high` | 仅 edit，输入保真 |
+| `--transparent` | 不传（关闭） | 颜色：`green` / `magenta` / `#00FF00` / `0,255,0` 等 | **可选**本地抠图：指定背景色，落盘后处理为透明 PNG。不从提示词猜颜色，由调用方明确传入 |
+
+### 可选抠图 `--transparent`
+
+- **默认关闭**。只有传了 `--transparent <颜色>` 才做后处理。
+- **不是 API 原生透明**：先按普通图生成，再本地按色键抠背景。
+- AI 在提示词里写了纯色背景时，**把同一颜色直接传给 `--transparent`**，无需再解析提示词。
+- 开启后强制 `output_format=png`。
+- 示例：
+
+```bash
+uv run image-gen generate \
+  --prompt "一只白猫贴纸，纯绿色 #00FF00 背景，无阴影" \
+  --transparent green \
+  --out /path/to/cat.png
+```
 
 **profile 配置（非 CLI）：**
 

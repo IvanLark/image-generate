@@ -28,6 +28,7 @@ from image_generate.jobs import (
 from image_generate.models import EditRequest, GenerateRequest, ImageResult
 from image_generate.registry import create_provider
 from image_generate.save import build_output_paths, save_result
+from image_generate.transparent import apply_transparent_to_paths
 
 
 def execute_generate(
@@ -42,7 +43,13 @@ def execute_generate(
     moderation: str | None,
     output_paths: list[Path],
     force: bool,
+    transparent: str | None = None,
 ) -> tuple[ImageResult, list[Path]]:
+    # 抠图结果需要 alpha，强制 png
+    if transparent:
+        output_format = "png"
+        output_paths = [_ensure_png_path(p) for p in output_paths]
+
     provider = create_provider(profile)
     result = provider.generate(
         GenerateRequest(
@@ -62,6 +69,7 @@ def execute_generate(
         force=force,
         requested_size=size,
     )
+    written = apply_transparent_to_paths(written, transparent)
     return result, written
 
 
@@ -80,7 +88,12 @@ def execute_edit(
     input_fidelity: str | None,
     output_paths: list[Path],
     force: bool,
+    transparent: str | None = None,
 ) -> tuple[ImageResult, list[Path]]:
+    if transparent:
+        output_format = "png"
+        output_paths = [_ensure_png_path(p) for p in output_paths]
+
     provider = create_provider(profile)
     result = provider.edit(
         EditRequest(
@@ -103,7 +116,14 @@ def execute_edit(
         force=force,
         requested_size=size,
     )
+    written = apply_transparent_to_paths(written, transparent)
     return result, written
+
+
+def _ensure_png_path(path: Path) -> Path:
+    if path.suffix.lower() == ".png":
+        return path
+    return path.with_suffix(".png")
 
 
 def _adjust_paths(output_paths: list[Path], count: int) -> list[Path]:
@@ -179,6 +199,9 @@ def run_job_worker(job_id: str) -> int:
         raw_paths = request.get("output_paths") or job.get("output_paths") or []
         output_paths = [Path(p) for p in raw_paths]
 
+        transparent = request.get("transparent")
+        transparent_s = str(transparent) if transparent else None
+
         if mode == "generate":
             _result, written = execute_generate(
                 profile,
@@ -191,6 +214,7 @@ def run_job_worker(job_id: str) -> int:
                 moderation=request.get("moderation") or "auto",
                 output_paths=output_paths,
                 force=force,
+                transparent=transparent_s,
             )
         elif mode == "edit":
             images = request.get("images") or []
@@ -210,6 +234,7 @@ def run_job_worker(job_id: str) -> int:
                 input_fidelity=request.get("input_fidelity"),
                 output_paths=output_paths,
                 force=force,
+                transparent=transparent_s,
             )
         else:
             raise JobError(f"未知 mode: {mode}")
@@ -274,8 +299,11 @@ def submit_generate_job(
     out: str | None,
     out_dir: str | None,
     force: bool,
+    transparent: str | None = None,
 ) -> dict[str, Any]:
     job_id, directory = _prepare_job_dir()
+    if transparent:
+        output_format = "png"
 
     if out or out_dir:
         paths = build_output_paths(
@@ -293,6 +321,8 @@ def submit_generate_job(
             output_format=output_format,
             default_name="output",
         )
+    if transparent:
+        paths = [_ensure_png_path(p) for p in paths]
 
     _check_outputs_free(paths, force)
     abs_paths = [str(p.resolve()) for p in paths]
@@ -304,6 +334,7 @@ def submit_generate_job(
         "output_format": output_format,
         "moderation": moderation,
         "model": effective_model,
+        "transparent": transparent,
     }
     request: dict[str, Any] = {
         "mode": "generate",
@@ -322,6 +353,7 @@ def submit_generate_job(
         "out_dir": out_dir,
         "force": force,
         "output_paths": abs_paths,
+        "transparent": transparent,
     }
     job: dict[str, Any] = {
         "id": job_id,
@@ -376,6 +408,7 @@ def submit_edit_job(
     out: str | None,
     out_dir: str | None,
     force: bool,
+    transparent: str | None = None,
 ) -> dict[str, Any]:
     for img in images:
         if not Path(img).is_file():
@@ -384,6 +417,8 @@ def submit_edit_job(
         raise JobError(f"遮罩文件不存在: {mask}")
 
     job_id, directory = _prepare_job_dir()
+    if transparent:
+        output_format = "png"
 
     if out or out_dir:
         paths = build_output_paths(
@@ -401,6 +436,8 @@ def submit_edit_job(
             output_format=output_format,
             default_name="edit",
         )
+    if transparent:
+        paths = [_ensure_png_path(p) for p in paths]
 
     _check_outputs_free(paths, force)
     abs_paths = [str(p.resolve()) for p in paths]
@@ -417,6 +454,7 @@ def submit_edit_job(
         "input_fidelity": input_fidelity,
         "images": abs_images,
         "mask": abs_mask,
+        "transparent": transparent,
     }
     request: dict[str, Any] = {
         "mode": "edit",
@@ -438,6 +476,7 @@ def submit_edit_job(
         "out_dir": out_dir,
         "force": force,
         "output_paths": abs_paths,
+        "transparent": transparent,
     }
     job: dict[str, Any] = {
         "id": job_id,
