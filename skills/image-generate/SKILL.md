@@ -64,6 +64,11 @@ Python ≥ 3.11。
 
 异步是 **本机后台进程 + jobs 状态文件**，供应商接口仍是同步长连接。
 
+**Windows 说明：** 异步 worker 使用 `DETACHED_PROCESS` / `CREATE_NEW_PROCESS_GROUP` /
+（尽量）`CREATE_BREAKAWAY_FROM_JOB` 脱离父终端与 Job Object，避免 Codex/终端在约 60s
+清理父任务时把 worker 一起杀掉（表现为 cch `Client aborted` / 本地 `KeyboardInterrupt`）。
+若仍被中断，请查看 `jobs/<id>/run.log` 与 `status` 中的错误分类。
+
 ### 2K / 4K 必须优先异步
 
 - **2K、4K** 往往要 **数分钟**，且 **按张计费**（例如本仓库 `paid_hq`）。

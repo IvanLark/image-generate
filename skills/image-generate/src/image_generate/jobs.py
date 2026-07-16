@@ -156,9 +156,21 @@ def refresh_job_liveness(job: dict[str, Any]) -> dict[str, Any]:
         except OSError:
             tail = ""
 
-    msg = "后台进程已退出但未写入完成状态，详见 run.log"
+    # 根据日志末尾尽量区分失败类型
+    reason = "后台进程已退出但未写入完成状态"
     if tail:
-        msg = f"{msg}\n--- run.log 末尾 ---\n{tail}"
+        low = tail.lower()
+        if "keyboardinterrupt" in low or "被本机中断" in tail:
+            reason = "后台 worker 被本机中断（疑似父进程/Job Object 清理）"
+        elif "timeout" in low or "timed out" in low:
+            reason = "后台 worker 疑似因超时退出"
+        elif "ssl" in low or "unexpected_eof" in low:
+            reason = "后台 worker 疑似因 TLS/连接错误退出"
+        elif "disconnected" in low:
+            reason = "后台 worker 疑似因上游断开连接退出"
+        msg = f"{reason}，详见 run.log\n--- run.log 末尾 ---\n{tail}"
+    else:
+        msg = f"{reason}，详见 run.log（日志为空）"
 
     return update_job(
         job_id,

@@ -90,13 +90,31 @@ HELP_TRANSPARENT = (
 )
 
 
+def _ensure_utf8_stdio() -> None:
+    """Windows 控制台默认 GBK 时，避免 status --json 因中文报 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def _die(msg: str, code: int = 1) -> None:
     print(f"错误: {msg}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def _print_json(data: Any) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 兜底：直接 UTF-8 写 buffer（部分 Windows 终端 reconfigure 失败时）
+        sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
+        sys.stdout.buffer.flush()
 
 
 def _add_common_args(p: argparse.ArgumentParser, *, with_dry_run: bool = True) -> None:
@@ -767,6 +785,7 @@ def _cmd_run_job(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_stdio()
     parser = _build_parser()
     args = parser.parse_args(argv)
 

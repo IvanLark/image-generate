@@ -140,6 +140,19 @@ def _adjust_paths(output_paths: list[Path], count: int) -> list[Path]:
     ]
 
 
+def _windows_creationflags() -> int:
+    """Windows 下尽量让 worker 脱离父 console / Job Object。
+
+    Codex/终端工具常把子进程放进 Job Object；仅 start_new_session 在 Windows
+    上不足以避免父进程清理时把 worker 一起杀掉（约 60s 后 Client aborted）。
+    """
+    detached = int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
+    new_group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
+    breakaway = int(getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000))
+    # 优先：完全 breakaway；部分环境禁止 breakaway 时由调用方回退
+    return detached | new_group | breakaway
+
+
 def spawn_run_job(job_id: str) -> int:
     """启动 `python -m image_generate.cli run-job <id>` 后台进程。"""
     log_path = run_log_path(job_id)
@@ -148,25 +161,66 @@ def spawn_run_job(job_id: str) -> int:
 
     cmd = [sys.executable, "-m", "image_generate.cli", "run-job", job_id]
     env = os.environ.copy()
-    # parents[1] = .../src/image_generate → parents[1]=image_generate 包目录的父是 src
+    # parents[1] = .../src （包 image_generate 的父目录）
     src = str(Path(__file__).resolve().parents[1])
     prev = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = src if not prev else src + os.pathsep + prev
 
     skill_root = Path(__file__).resolve().parents[2]
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=log_f,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        env=env,
-        cwd=str(skill_root),
-    )
+    popen_kwargs: dict[str, Any] = {
+        "args": cmd,
+        "stdin": subprocess.DEVNULL,
+        "stdout": log_f,
+        "stderr": subprocess.STDOUT,
+        "env": env,
+        "cwd": str(skill_root),
+        "close_fds": True,
+    }
+
+    if os.name == "nt":
+        # 先试 breakaway；失败再降级（不 breakaway）
+        flags_full = _windows_creationflags()
+        detached = int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
+        new_group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
+        flags_fallback = detached | new_group
+        try:
+            popen_kwargs["creationflags"] = flags_full
+            proc = subprocess.Popen(**popen_kwargs)
+        except OSError as exc:
+            print(
+                f"[worker-spawn] CREATE_BREAKAWAY_FROM_JOB 不可用，回退 flags: {exc}",
+                file=sys.stderr,
+            )
+            popen_kwargs["creationflags"] = flags_fallback
+            proc = subprocess.Popen(**popen_kwargs)
+    else:
+        # POSIX：新 session，避免 SIGHUP / 父终端关闭带走子进程
+        popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(**popen_kwargs)
+
     log_f.close()
     if proc.pid is None:
         raise JobError("无法启动后台进程")
+    print(
+        f"[worker-spawn] job_id={job_id} pid={proc.pid} os={os.name}",
+        file=sys.stderr,
+    )
     return int(proc.pid)
+
+
+def _mark_job_failed(job_id: str, started: float, message: str) -> None:
+    elapsed_ms = int((time.time() - started) * 1000)
+    try:
+        update_job(
+            job_id,
+            status="error",
+            finished_at=now_iso(),
+            elapsed_ms=elapsed_ms,
+            error=message,
+        )
+    except Exception:
+        pass
+    print(f"错误: {message}", file=sys.stderr)
 
 
 def run_job_worker(job_id: str) -> int:
@@ -179,11 +233,25 @@ def run_job_worker(job_id: str) -> int:
         return 1
 
     started = time.time()
+    pid = os.getpid()
+    try:
+        ppid = os.getppid()
+    except Exception:
+        ppid = None
+
     update_job(
         job_id,
         status="running",
-        pid=os.getpid(),
+        pid=pid,
         started_at=job.get("started_at") or now_iso(),
+    )
+    print(
+        f"[worker] start job_id={job_id} pid={pid} ppid={ppid} "
+        f"mode={request.get('mode') or job.get('mode')} "
+        f"profile={request.get('profile') or job.get('profile')} "
+        f"os={os.name}",
+        file=sys.stderr,
+        flush=True,
     )
 
     try:
@@ -201,6 +269,14 @@ def run_job_worker(job_id: str) -> int:
 
         transparent = request.get("transparent")
         transparent_s = str(transparent) if transparent else None
+
+        print(
+            f"[worker] 开始请求 profile={profile.name} timeout={profile.timeout:.0f}s "
+            f"size={request.get('size')} model={request.get('model') or profile.model}",
+            file=sys.stderr,
+            flush=True,
+        )
+        req_started = time.time()
 
         if mode == "generate":
             _result, written = execute_generate(
@@ -239,6 +315,13 @@ def run_job_worker(job_id: str) -> int:
         else:
             raise JobError(f"未知 mode: {mode}")
 
+        print(
+            f"[worker] 请求完成 elapsed={time.time() - req_started:.1f}s "
+            f"images={len(written)}",
+            file=sys.stderr,
+            flush=True,
+        )
+
         elapsed_ms = int((time.time() - started) * 1000)
         update_job(
             job_id,
@@ -251,19 +334,28 @@ def run_job_worker(job_id: str) -> int:
         for p in written:
             print(p)
         return 0
+    except KeyboardInterrupt:
+        # Windows/父进程清理时常表现为 KeyboardInterrupt，必须写入明确状态
+        msg = (
+            "后台 worker 被本机中断（KeyboardInterrupt）。"
+            "常见于 Windows 下 worker 未脱离父进程 Job Object；"
+            "请升级到支持 DETACHED_PROCESS 的版本后重试。"
+        )
+        _mark_job_failed(job_id, started, msg)
+        return 130
     except Exception as exc:  # noqa: BLE001
-        elapsed_ms = int((time.time() - started) * 1000)
-        try:
-            update_job(
-                job_id,
-                status="error",
-                finished_at=now_iso(),
-                elapsed_ms=elapsed_ms,
-                error=str(exc),
-            )
-        except Exception:
-            pass
-        print(f"错误: {exc}", file=sys.stderr)
+        err = str(exc)
+        # 给常见网络/中断错误加一点分类前缀，便于 status 阅读
+        lowered = err.lower()
+        if "timeout" in lowered or "timed out" in lowered:
+            err = f"HTTP/读取超时: {err}"
+        elif "ssl" in lowered or "unexpected_eof" in lowered:
+            err = f"TLS/连接错误: {err}"
+        elif "disconnected" in lowered or "connection reset" in lowered:
+            err = f"上游断开连接: {err}"
+        elif "client aborted" in lowered or "aborted" in lowered:
+            err = f"客户端中断: {err}"
+        _mark_job_failed(job_id, started, err)
         return 1
 
 
