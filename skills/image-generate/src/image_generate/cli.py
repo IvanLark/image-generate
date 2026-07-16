@@ -9,10 +9,10 @@ import time
 from typing import Any
 
 from image_generate.config import (
-    DEFAULT_CONFIG_PATH,
     ConfigError,
     Profile,
     load_config,
+    user_config_path,
 )
 from image_generate.jobs import (
     JobError,
@@ -60,8 +60,9 @@ HELP_MODERATION = (
 HELP_MODEL = "覆盖 profile 中的模型 ID。默认用 profile.model（当前多为 gpt-image-2）。"
 HELP_PROFILE = "使用的 profile 名称。默认读配置里的 active。可用 image-gen profiles 查看。"
 HELP_CONFIG = (
-    f"配置文件路径。默认: {DEFAULT_CONFIG_PATH}，"
-    "或环境变量 IMAGE_GENERATE_CONFIG。"
+    "配置文件路径。查找顺序: --config > 环境变量 IMAGE_GENERATE_CONFIG > "
+    f"用户配置 {user_config_path()} > skill 内 config/profiles.yaml。"
+    "推荐使用用户配置目录，避免 npx skills update 冲掉密钥。"
 )
 HELP_OUT = "输出文件路径（单图）。异步且未指定时默认写到 jobs/<job_id>/output.<ext>。"
 HELP_OUT_DIR = "输出目录。多图时自动命名 output_1.png 等。"

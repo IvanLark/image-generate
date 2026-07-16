@@ -124,17 +124,30 @@ python3 -m image_generate.cli --help
 
 ## 配置（多供应商）
 
+**重要：`npx skills update` 会重装 skill 目录，skill 内的 `config/profiles.yaml` 会被删掉。**  
+密钥配置请放在**用户目录**（默认）：
+
+| 系统 | 默认路径 |
+|------|----------|
+| macOS / Linux | `~/.config/image-generate/profiles.yaml` |
+| Windows | `%APPDATA%\image-generate\profiles.yaml` |
+
 ```bash
-cd <skill根目录>
-cp config/profiles.example.yaml config/profiles.yaml
+# 首次
+mkdir -p ~/.config/image-generate   # Windows: 建 %APPDATA%\image-generate
+cp <skill根目录>/config/profiles.example.yaml ~/.config/image-generate/profiles.yaml
+# 编辑填入 base_url / 密钥
 ```
 
-编辑 `profiles.yaml`：`type`、`base_url`、密钥、`model`。  
-密钥：`api_key_env` / `api_key_file` / `api_key`（勿提交 git）。
+查找顺序：
 
-环境变量：
+1. `--config /path/to.yaml`
+2. 环境变量 `IMAGE_GENERATE_CONFIG`
+3. 用户目录配置（推荐）
+4. skill 内 `config/profiles.yaml`（仅开发用，update 会丢）
 
-- `IMAGE_GENERATE_CONFIG`：配置文件路径
+其它环境变量：
+
 - `IMAGE_GENERATE_JOBS_DIR`：异步任务目录（默认 skill 内 `jobs/`）
 
 **当前 type**：`openai_compatible`

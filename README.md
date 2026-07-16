@@ -42,24 +42,33 @@ uv sync
 
 ## 配置供应商
 
+**不要把密钥写在 skill 目录里。** `npx skills update` 会重装 skill，目录内配置会被冲掉。
+
+推荐用户级配置（update 不受影响）：
+
 ```bash
-cd skills/image-generate
-cp config/profiles.example.yaml config/profiles.yaml
-# 编辑 profiles.yaml：base_url、model、密钥
+# macOS / Linux
+mkdir -p ~/.config/image-generate
+cp skills/image-generate/config/profiles.example.yaml \
+   ~/.config/image-generate/profiles.yaml
+# 编辑：base_url、model、密钥
+
+# Windows（PowerShell 示例）
+# mkdir $env:APPDATA\image-generate
+# copy ...\profiles.example.yaml $env:APPDATA\image-generate\profiles.yaml
 ```
 
-密钥推荐用环境变量（见 `profiles.example.yaml`），也可用 `api_key_file` / `api_key`。  
-**不要**把真实 `profiles.yaml` 和密钥提交进 git。
+| 优先级 | 路径 |
+|--------|------|
+| 1 | `--config /path/to.yaml` |
+| 2 | 环境变量 `IMAGE_GENERATE_CONFIG` |
+| 3 | `~/.config/image-generate/profiles.yaml`（Windows: `%APPDATA%\image-generate\`） |
+| 4 | skill 内 `config/profiles.yaml`（可选，update 会丢） |
 
-配置文件位置：
-
-| 方式 | 说明 |
-|------|------|
-| 默认 | skill 内 `config/profiles.yaml` |
-| `--config /path/to.yaml` | 任意路径 |
-| 环境变量 `IMAGE_GENERATE_CONFIG` | 全局指定配置文件 |
+密钥可用环境变量 / `api_key_file` / `api_key`（见 example）。勿把真实配置提交进 git。
 
 ```bash
+cd skills/image-generate   # 或全局 skill 目录
 uv run image-gen profiles
 ```
 

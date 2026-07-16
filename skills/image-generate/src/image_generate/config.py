@@ -11,12 +11,62 @@ import yaml
 
 # skill 根目录：skills/image-generate/
 SKILL_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = SKILL_ROOT / "config" / "profiles.yaml"
+# skill 内配置：仅作开发/可选覆盖；npx skills update 会冲掉 skill 目录
+SKILL_CONFIG_PATH = SKILL_ROOT / "config" / "profiles.yaml"
 EXAMPLE_CONFIG_PATH = SKILL_ROOT / "config" / "profiles.example.yaml"
+
+
+def user_config_path() -> Path:
+    """用户级配置路径（不在 skill 目录内，update 不会覆盖）。
+
+    - macOS/Linux: $XDG_CONFIG_HOME/image-generate/profiles.yaml
+      默认 ~/.config/image-generate/profiles.yaml
+    - Windows: %APPDATA%/image-generate/profiles.yaml
+    """
+    if os.name == "nt":
+        base = os.environ.get("APPDATA", "").strip()
+        root = Path(base) if base else Path.home() / "AppData" / "Roaming"
+        return (root / "image-generate" / "profiles.yaml").resolve()
+
+    xdg = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    if xdg:
+        return (Path(xdg) / "image-generate" / "profiles.yaml").resolve()
+    return (Path.home() / ".config" / "image-generate" / "profiles.yaml").resolve()
+
+
+# 默认优先用户配置；兼容旧代码里的名字
+DEFAULT_CONFIG_PATH = user_config_path()
 
 
 class ConfigError(Exception):
     """配置错误。"""
+
+
+def resolve_config_path(path: Path | str | None = None) -> Path:
+    """解析配置文件路径。
+
+    优先级：
+    1. 显式 path / --config
+    2. 环境变量 IMAGE_GENERATE_CONFIG
+    3. 用户目录配置（推荐，update 不丢）
+    4. skill 内 config/profiles.yaml（可选本地覆盖）
+    """
+    if path is not None:
+        return Path(path).expanduser()
+
+    env_path = os.environ.get("IMAGE_GENERATE_CONFIG", "").strip()
+    if env_path:
+        return Path(env_path).expanduser()
+
+    user_path = user_config_path()
+    if user_path.is_file():
+        return user_path
+
+    if SKILL_CONFIG_PATH.is_file():
+        return SKILL_CONFIG_PATH
+
+    # 默认指向用户路径（即使尚不存在，错误提示会教复制到这里）
+    return user_path
 
 
 @dataclass(slots=True)
@@ -185,18 +235,18 @@ def load_config(
     避免未使用的 profile 缺密钥导致整份配置加载失败。
     require_api_key 参数保留兼容：为 True 时会预解析 active profile。
     """
-    if path is None:
-        env_path = os.environ.get("IMAGE_GENERATE_CONFIG", "").strip()
-        config_path = Path(env_path) if env_path else DEFAULT_CONFIG_PATH
-    else:
-        config_path = Path(path)
+    config_path = resolve_config_path(path)
 
     if not config_path.is_file():
+        user_path = user_config_path()
         hint = (
             f"配置文件不存在: {config_path}\n"
-            f"请复制示例配置：\n"
-            f"  cp {EXAMPLE_CONFIG_PATH} {DEFAULT_CONFIG_PATH}\n"
-            f"然后填入 base_url / 密钥相关字段。"
+            f"推荐把配置放在用户目录（npx skills update 不会覆盖）：\n"
+            f"  mkdir -p {user_path.parent}\n"
+            f"  cp {EXAMPLE_CONFIG_PATH} {user_path}\n"
+            f"然后编辑填入 base_url / 密钥。\n"
+            f"也可设置环境变量 IMAGE_GENERATE_CONFIG 指向任意路径，\n"
+            f"或用 --config /path/to/profiles.yaml。"
         )
         raise ConfigError(hint)
 
