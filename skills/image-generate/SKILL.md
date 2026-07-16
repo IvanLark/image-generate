@@ -122,29 +122,74 @@ python3 -m image_generate.cli --help
 
 下文示例默认写 `uv run image-gen`；无 `uv` 时把整段换成 `python3 -m image_generate.cli` 即可。
 
-## 配置（多供应商）
+## 配置（多供应商）——Agent 必读
 
-**重要：`npx skills update` 会重装 skill 目录，skill 内的 `config/profiles.yaml` 会被删掉。**  
-密钥配置请放在**用户目录**（默认）：
+### 配置必须写在用户目录（不要写在 skill 里）
 
-| 系统 | 默认路径 |
-|------|----------|
+`npx skills update` / skill 重装会**清空 skill 目录**，其中的 `config/profiles.yaml` 会丢。  
+**真实配置永远写在用户目录**，由 AI 在首次使用或用户改供应商时创建/更新：
+
+| 系统 | 默认路径（请记住并优先用这个） |
+|------|--------------------------------|
 | macOS / Linux | `~/.config/image-generate/profiles.yaml` |
 | Windows | `%APPDATA%\image-generate\profiles.yaml` |
-
-```bash
-# 首次
-mkdir -p ~/.config/image-generate   # Windows: 建 %APPDATA%\image-generate
-cp <skill根目录>/config/profiles.example.yaml ~/.config/image-generate/profiles.yaml
-# 编辑填入 base_url / 密钥
-```
 
 查找顺序：
 
 1. `--config /path/to.yaml`
-2. 环境变量 `IMAGE_GENERATE_CONFIG`
-3. 用户目录配置（推荐）
-4. skill 内 `config/profiles.yaml`（仅开发用，update 会丢）
+2. 环境变量 `IMAGE_GENERATE_CONFIG`（指向任意 yaml）
+3. **用户目录配置（默认、推荐）**
+4. skill 内 `config/profiles.yaml`（仅开发调试，update 会丢，不要依赖）
+
+首次没有配置时：
+
+```bash
+# macOS / Linux
+mkdir -p ~/.config/image-generate
+cp <skill根目录>/config/profiles.example.yaml ~/.config/image-generate/profiles.yaml
+# 再编辑 yaml，写入 base_url、api_key、model 等
+
+# Windows（PowerShell）
+# New-Item -ItemType Directory -Force $env:APPDATA\image-generate
+# Copy-Item <skill>\config\profiles.example.yaml $env:APPDATA\image-generate\profiles.yaml
+```
+
+出图前先跑：`uv run image-gen profiles`（确认 active、供应商信息、`api_key: 已配置`）。
+
+### API Key 怎么写（默认明文写在 yaml）
+
+**默认做法：在 profiles.yaml 里直接写 `api_key: "sk-..."`**，简单直接，适合个人本机 skill。
+
+也支持（可选，不强制）：
+
+- `api_key_env: SOME_ENV_NAME` — 从环境变量读  
+- `api_key_file: ./key.txt` — 从文件读  
+
+示例片段：
+
+```yaml
+active: nikoapi
+
+profiles:
+  nikoapi:
+    type: openai_compatible
+    base_url: https://nikoapi.xyz/v1
+    api_key: "sk-你的密钥"    # 默认这样写即可
+    model: gpt-image-2
+    timeout: 600
+    response_format_b64_json: false
+    options:
+      display_name: Niko API
+      price: 约 0.03 元/张
+      resolution: 仅 1K
+      recommended_sizes:
+        - "1024x1024"
+        - "1536x1024"
+        - "1024x1536"
+      note: 实际输出多为 1K 档；传 2k/4k 也可能不报错但像素仍约 1K
+```
+
+`options` 里的 `display_name` / `price` / `resolution` / `recommended_sizes` / `note` 会在 `profiles` 命令里展示，方便 AI 选型。
 
 其它环境变量：
 
@@ -154,7 +199,7 @@ cp <skill根目录>/config/profiles.example.yaml ~/.config/image-generate/profil
 
 ## Agent 推荐流程（异步）
 
-1. **依赖已安装**（见上文「依赖初始化」）；`config/profiles.yaml` 与密钥可用。**不要**让用户把完整密钥贴进聊天。
+1. **依赖已安装**；**用户目录**已有 `profiles.yaml` 且 `profiles` 显示密钥已配置。需要改供应商时只改用户目录 yaml。
 2. 提交任务（数秒内结束）：
 
 ```bash
@@ -233,7 +278,7 @@ uv run image-gen generate \
 | `--output-format` | `png` | `png` / `jpeg` / `webp` | 输出编码 |
 | `--moderation` | `auto` | `auto` / `low` | 审核严格度 |
 | `--model` | profile 内（常 `gpt-image-2`） | 模型 ID | 覆盖 profile |
-| `--profile` | 配置 `active` | 如 `free_1k` / `paid_1k` / `paid_hq` | 选供应商 |
+| `--profile` | 配置 `active` | 如 `nikoapi` | 选供应商 |
 | `--timeout` | profile（常 600） | 秒 | HTTP 读超时 |
 | `--input-fidelity` | 不传 | `low` / `high` | 仅 edit，输入保真 |
 | `--transparent` | 不传（关闭） | 颜色：`green` / `magenta` / `#00FF00` / `0,255,0` 等 | **可选**本地抠图：指定背景色，落盘后处理为透明 PNG。不从提示词猜颜色，由调用方明确传入 |
@@ -259,7 +304,7 @@ uv run image-gen generate \
 |----|------|------|
 | `response_format_b64_json` | `false` | 为 true 时请求附带 `response_format=b64_json`。默认关（与 playground 一致）。客户端仍支持解析 b64 或 url |
 
-本仓库供应商简述：`free_1k`/`paid_1k` 仅 1K；`paid_hq` 可 2K/4K。
+供应商以用户目录 `profiles.yaml` 为准；用 `profiles` 查看当前有哪些。
 
 ## 其它示例
 
@@ -268,22 +313,18 @@ cd <skill根目录>
 uv run image-gen profiles
 uv run image-gen generate --help
 uv run image-gen list
-uv run image-gen list --status running
 
-uv run image-gen submit generate --profile free_1k --prompt "一只猫" --json
-# 2K/4K：必须异步 + paid_hq（示例）
-uv run image-gen submit generate --profile paid_hq --size 3840x2160 --prompt "一只猫" --json
-uv run image-gen status 20260711T221530-a3f2b1 --json
+uv run image-gen submit generate --profile nikoapi --size 1k/1:1 --prompt "一只猫" --json
+uv run image-gen status <job_id> --json
 # wait 仅建议人在终端用；Agent 继续用 status 轮询
-uv run image-gen wait 20260711T221530-a3f2b1 --interval 10 --timeout 600
 
 uv run image-gen submit edit --image ref.png --prompt "只换背景" --out edited.png --json
 ```
 
 ## 安全
 
-- 禁止在聊天、日志、提交内容中粘贴完整 API Key
-- `config/profiles.yaml`、`key.txt`、`jobs/` 勿提交密钥或敏感输出
+- 真实 `profiles.yaml` 放在**用户目录**，不要提交到 git / 不要依赖 skill 内配置  
+- 日志与 `profiles` 命令**不打印**完整 api_key  
 - job 文件 **不包含** api_key
 
 ## 提示词

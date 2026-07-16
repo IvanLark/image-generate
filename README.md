@@ -42,20 +42,16 @@ uv sync
 
 ## 配置供应商
 
-**不要把密钥写在 skill 目录里。** `npx skills update` 会重装 skill，目录内配置会被冲掉。
-
-推荐用户级配置（update 不受影响）：
+**配置写在用户目录，不要写在 skill 目录。** `npx skills update` 会重装 skill，目录内文件会被冲掉。
 
 ```bash
 # macOS / Linux
 mkdir -p ~/.config/image-generate
 cp skills/image-generate/config/profiles.example.yaml \
    ~/.config/image-generate/profiles.yaml
-# 编辑：base_url、model、密钥
+# 编辑：base_url、model、api_key（默认明文写在 yaml 即可）
 
-# Windows（PowerShell 示例）
-# mkdir $env:APPDATA\image-generate
-# copy ...\profiles.example.yaml $env:APPDATA\image-generate\profiles.yaml
+# Windows: %APPDATA%\image-generate\profiles.yaml
 ```
 
 | 优先级 | 路径 |
@@ -65,7 +61,8 @@ cp skills/image-generate/config/profiles.example.yaml \
 | 3 | `~/.config/image-generate/profiles.yaml`（Windows: `%APPDATA%\image-generate\`） |
 | 4 | skill 内 `config/profiles.yaml`（可选，update 会丢） |
 
-密钥可用环境变量 / `api_key_file` / `api_key`（见 example）。勿把真实配置提交进 git。
+**API Key 默认明文写在 yaml 的 `api_key` 字段**；也可用 `api_key_env` / `api_key_file`。  
+真实配置勿提交 git。
 
 ```bash
 cd skills/image-generate   # 或全局 skill 目录
