@@ -18,7 +18,8 @@ def main() -> int:
     env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
 
     # 优先 uv run（本 skill 用 uv 管理依赖）
-    uv = _which("uv")
+    # Windows 上可执行文件可能是 uv.exe
+    uv = _which("uv") or _which("uv.exe")
     if uv:
         cmd = [uv, "run", "--directory", str(SKILL_ROOT), "image-gen", *sys.argv[1:]]
         return subprocess.call(cmd, env=env)
@@ -29,14 +30,15 @@ def main() -> int:
 
         return int(cli_main())
     except ImportError:
+        py = "python" if os.name == "nt" else "python3"
         print(
             "错误: 未找到 uv，且无法 import image_generate（依赖未安装）。\n"
             f"请在 skill 根目录初始化依赖：\n"
             f"  有 uv:  cd {SKILL_ROOT} && uv sync\n"
             f"          然后: uv run image-gen ...\n"
-            f"  无 uv:  cd {SKILL_ROOT} && python3 -m pip install -e .\n"
-            f"          然后: python3 -m image_generate.cli ...\n"
-            f"                 或: python3 scripts/image_gen.py ...",
+            f"  无 uv:  cd {SKILL_ROOT} && {py} -m pip install -e .\n"
+            f"          然后: {py} -m image_generate.cli ...\n"
+            f"                 或: {py} scripts/image_gen.py ...",
             file=sys.stderr,
         )
         return 1

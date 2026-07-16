@@ -182,10 +182,14 @@ def spawn_run_job(job_id: str) -> int:
         flags_full = _windows_creationflags()
         detached = int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
         new_group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
-        flags_fallback = detached | new_group
+        # CREATE_NO_WINDOW：避免弹出控制台黑窗（与 DETACHED 搭配更稳）
+        no_window = int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        flags_fallback = detached | new_group | no_window
+        flags_full = flags_full | no_window
         try:
             popen_kwargs["creationflags"] = flags_full
             proc = subprocess.Popen(**popen_kwargs)
+            spawn_mode = "breakaway+detached"
         except OSError as exc:
             print(
                 f"[worker-spawn] CREATE_BREAKAWAY_FROM_JOB 不可用，回退 flags: {exc}",
@@ -193,16 +197,18 @@ def spawn_run_job(job_id: str) -> int:
             )
             popen_kwargs["creationflags"] = flags_fallback
             proc = subprocess.Popen(**popen_kwargs)
+            spawn_mode = "detached-fallback"
     else:
         # POSIX：新 session，避免 SIGHUP / 父终端关闭带走子进程
         popen_kwargs["start_new_session"] = True
         proc = subprocess.Popen(**popen_kwargs)
+        spawn_mode = "setsid"
 
     log_f.close()
     if proc.pid is None:
         raise JobError("无法启动后台进程")
     print(
-        f"[worker-spawn] job_id={job_id} pid={proc.pid} os={os.name}",
+        f"[worker-spawn] job_id={job_id} pid={proc.pid} os={os.name} mode={spawn_mode}",
         file=sys.stderr,
     )
     return int(proc.pid)

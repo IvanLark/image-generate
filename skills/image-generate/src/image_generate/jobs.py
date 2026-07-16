@@ -80,11 +80,26 @@ _now_iso = now_iso
 
 
 def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
+    """原子写 JSON。Windows 上用 os.replace，避免目标已存在时的替换问题。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # 唯一临时名，降低并发 status/worker 写同一 .tmp 的概率
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        # 极少见：目标被占用时重试一次
+        try:
+            time_mod = __import__("time")
+            time_mod.sleep(0.05)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
 
 def load_job(job_id: str) -> dict[str, Any]:
@@ -121,8 +136,41 @@ def update_job(job_id: str, **fields: Any) -> dict[str, Any]:
 
 
 def is_pid_alive(pid: int | None) -> bool:
+    """判断 PID 是否仍存活。
+
+    Windows 上 `os.kill(pid, 0)` 不可靠（signal 0 不受支持或行为异常），
+    会导致 running 任务被误判为已死。改用 OpenProcess 查询。
+    """
     if pid is None or pid <= 0:
         return False
+
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+
+            handle = kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION,
+                False,
+                wintypes.DWORD(pid),
+            )
+            if not handle:
+                return False
+            try:
+                exit_code = wintypes.DWORD()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return int(exit_code.value) == STILL_ACTIVE
+                # 打不开退出码时，能 OpenProcess 成功通常表示仍存在
+                return True
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return False
+
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
