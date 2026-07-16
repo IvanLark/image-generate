@@ -113,7 +113,7 @@ python3 -m image_generate.cli --help
 | `list` | 列出本机任务 |
 | `generate` | 同步文生图 |
 | `edit` | 同步图生图 |
-| `profiles` | 列出供应商配置 |
+| `profiles` | 列出供应商（含 price/resolution/note 等，**不显示密钥**；可加 `--json`） |
 
 下文示例默认写 `uv run image-gen`；无 `uv` 时把整段换成 `python3 -m image_generate.cli` 即可。
 

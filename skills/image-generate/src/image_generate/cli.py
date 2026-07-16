@@ -11,8 +11,8 @@ from typing import Any
 from image_generate.config import (
     DEFAULT_CONFIG_PATH,
     ConfigError,
+    Profile,
     load_config,
-    mask_secret,
 )
 from image_generate.jobs import (
     JobError,
@@ -260,8 +260,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="stdout 输出 JSON 数组",
     )
 
-    profiles_p = sub.add_parser("profiles", help="列出配置中的 profile")
+    profiles_p = sub.add_parser(
+        "profiles",
+        help="列出配置中的供应商 profile（含 options 说明，不显示密钥）",
+    )
     profiles_p.add_argument("--config", default=None, help="配置文件路径")
+    profiles_p.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="stdout 输出 JSON（无密钥字段）",
+    )
 
     run_job_p = sub.add_parser(
         "run-job",
@@ -291,29 +300,104 @@ def _effective_output_format(output_format: str, transparent: str | None) -> str
     return "png" if transparent else output_format
 
 
+def _profile_public_view(prof: Profile, *, is_active: bool) -> dict[str, Any]:
+    """给 profiles / --json 用的公开信息，绝不包含密钥。"""
+    opts = dict(prof.options or {})
+    has_key = False
+    try:
+        prof.ensure_api_key()
+        has_key = True
+    except ConfigError:
+        has_key = False
+
+    return {
+        "id": prof.name,
+        "active": is_active,
+        "display_name": opts.get("display_name") or prof.name,
+        "type": prof.type,
+        "base_url": prof.base_url,
+        "model": prof.model,
+        "timeout": prof.timeout,
+        "response_format_b64_json": prof.response_format_b64_json,
+        "api_key_configured": has_key,
+        "price": opts.get("price"),
+        "resolution": opts.get("resolution"),
+        "recommended_sizes": opts.get("recommended_sizes"),
+        "note": opts.get("note"),
+        "options": opts,
+    }
+
+
 def _cmd_profiles(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(args.config, require_api_key=False)
     except ConfigError as exc:
         _die(str(exc))
 
+    views = [
+        _profile_public_view(prof, is_active=(name == cfg.active))
+        for name, prof in cfg.profiles.items()
+    ]
+
+    if getattr(args, "as_json", False):
+        _print_json(
+            {
+                "config_path": str(cfg.config_path),
+                "active": cfg.active,
+                "registered_types": registered_types(),
+                "profiles": views,
+            }
+        )
+        return 0
+
     print(f"配置文件: {cfg.config_path}")
     print(f"当前 active: {cfg.active}")
     print(f"已注册供应商类型: {', '.join(registered_types())}")
+    print("（不显示 API 密钥）")
     print()
-    for name, prof in cfg.profiles.items():
-        mark = "*" if name == cfg.active else " "
-        try:
-            key_display = mask_secret(prof.ensure_api_key())
-        except ConfigError:
-            key_display = "(未配置)"
-        print(
-            f"{mark} {name}\n"
-            f"    type={prof.type}  model={prof.model}\n"
-            f"    base_url={prof.base_url}\n"
-            f"    timeout={prof.timeout:.0f}s  "
-            f"key={key_display}"
-        )
+
+    for view in views:
+        mark = "*" if view["active"] else " "
+        title = view["display_name"]
+        if title != view["id"]:
+            header = f"{mark} {view['id']}  ({title})"
+        else:
+            header = f"{mark} {view['id']}"
+        print(header)
+        print(f"    type: {view['type']}")
+        print(f"    model: {view['model']}")
+        print(f"    base_url: {view['base_url']}")
+        print(f"    timeout: {view['timeout']:.0f}s")
+        print(f"    response_format_b64_json: {view['response_format_b64_json']}")
+        print(f"    api_key: {'已配置' if view['api_key_configured'] else '未配置'}")
+        if view.get("price") is not None:
+            print(f"    price: {view['price']}")
+        if view.get("resolution") is not None:
+            print(f"    resolution: {view['resolution']}")
+        sizes = view.get("recommended_sizes")
+        if isinstance(sizes, list) and sizes:
+            print(f"    recommended_sizes: {', '.join(str(s) for s in sizes)}")
+        elif sizes:
+            print(f"    recommended_sizes: {sizes}")
+        if view.get("note"):
+            print(f"    note: {view['note']}")
+        # 其它自定义 options（避免和已展示字段重复）
+        shown = {
+            "display_name",
+            "price",
+            "resolution",
+            "recommended_sizes",
+            "note",
+        }
+        extra = {
+            k: v
+            for k, v in (view.get("options") or {}).items()
+            if k not in shown
+        }
+        if extra:
+            for k, v in extra.items():
+                print(f"    {k}: {v}")
+        print()
     return 0
 
 
