@@ -256,6 +256,15 @@ uv run image-gen generate \
 | 参数 | 默认 | 可选值 | 含义 |
 |------|------|--------|------|
 | `--size` | `auto` | 见下「尺寸写法」 | 输出尺寸；**2K/4K 请异步** |
+| `--quality` | `auto` | `auto` / `low` / `medium` / `high` | 质量；high 更细更慢 |
+| `--n` | `1` | 1～10 | 生成张数 |
+| `--output-format` | `png` | `png` / `jpeg` / `webp` | 输出编码 |
+| `--moderation` | `auto` | `auto` / `low` | 审核严格度 |
+| `--model` | profile 内（常 `gpt-image-2`） | 模型 ID | 覆盖 profile |
+| `--profile` | 配置 `active` | 如 `nikoapi` | 选供应商 |
+| `--timeout` | profile（常 600） | 秒 | HTTP 读超时 |
+| `--input-fidelity` | 不传 | `low` / `high` | 仅 edit，输入保真 |
+| `--transparent` | 不传（关闭） | 颜色：`green` / `magenta` / `#00FF00` / `0,255,0` 等 | **可选**本地抠图 |
 
 ### 尺寸写法（`--size`）
 
@@ -273,15 +282,6 @@ uv run image-gen generate \
 - `4k/16:9`→`3840x2160`，`4k/9:16`→`2160x3840`，`4k/1:1`→`2880x2880`
 
 比例支持：`1:1` `3:2` `2:3` `16:9` `9:16` `4:3` `3:4` `21:9`。
-| `--quality` | `auto` | `auto` / `low` / `medium` / `high` | 质量；high 更细更慢 |
-| `--n` | `1` | 1～10 | 生成张数 |
-| `--output-format` | `png` | `png` / `jpeg` / `webp` | 输出编码 |
-| `--moderation` | `auto` | `auto` / `low` | 审核严格度 |
-| `--model` | profile 内（常 `gpt-image-2`） | 模型 ID | 覆盖 profile |
-| `--profile` | 配置 `active` | 如 `nikoapi` | 选供应商 |
-| `--timeout` | profile（常 600） | 秒 | HTTP 读超时 |
-| `--input-fidelity` | 不传 | `low` / `high` | 仅 edit，输入保真 |
-| `--transparent` | 不传（关闭） | 颜色：`green` / `magenta` / `#00FF00` / `0,255,0` 等 | **可选**本地抠图：指定背景色，落盘后处理为透明 PNG。不从提示词猜颜色，由调用方明确传入 |
 
 ### 可选抠图 `--transparent`
 
