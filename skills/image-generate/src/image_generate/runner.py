@@ -28,6 +28,7 @@ from image_generate.jobs import (
 from image_generate.models import EditRequest, GenerateRequest, ImageResult
 from image_generate.registry import create_provider
 from image_generate.save import build_output_paths, save_result
+from image_generate.size import SizeError, resolve_size
 from image_generate.transparent import apply_transparent_to_paths
 
 
@@ -276,9 +277,17 @@ def run_job_worker(job_id: str) -> int:
         transparent = request.get("transparent")
         transparent_s = str(transparent) if transparent else None
 
+        raw_size = str(request.get("size") or "auto")
+        try:
+            size = resolve_size(raw_size)
+        except SizeError as exc:
+            raise JobError(str(exc)) from exc
+
         print(
             f"[worker] 开始请求 profile={profile.name} timeout={profile.timeout:.0f}s "
-            f"size={request.get('size')} model={request.get('model') or profile.model}",
+            f"size={size}"
+            + (f" (from {raw_size})" if raw_size != size else "")
+            + f" model={request.get('model') or profile.model}",
             file=sys.stderr,
             flush=True,
         )
@@ -289,7 +298,7 @@ def run_job_worker(job_id: str) -> int:
                 profile,
                 prompt=str(request["prompt"]),
                 model=request.get("model"),
-                size=str(request.get("size") or "auto"),
+                size=size,
                 quality=str(request.get("quality") or "auto"),
                 n=int(request.get("n") or 1),
                 output_format=str(request.get("output_format") or "png"),
@@ -308,7 +317,7 @@ def run_job_worker(job_id: str) -> int:
                 image_paths=[str(p) for p in images],
                 mask_path=request.get("mask"),
                 model=request.get("model"),
-                size=str(request.get("size") or "auto"),
+                size=size,
                 quality=str(request.get("quality") or "auto"),
                 n=int(request.get("n") or 1),
                 output_format=str(request.get("output_format") or "png"),

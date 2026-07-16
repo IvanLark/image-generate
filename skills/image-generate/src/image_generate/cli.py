@@ -33,6 +33,7 @@ from image_generate.runner import (
     submit_generate_job,
 )
 from image_generate.save import SaveError, build_output_paths
+from image_generate.size import SizeError, format_size_help, resolve_size
 from image_generate.transparent import TransparentError, parse_color
 
 DEFAULT_SIZE = "auto"
@@ -42,14 +43,7 @@ DEFAULT_MODERATION = "auto"
 DEFAULT_N = 1
 
 # --help 用：各参数可选值与含义
-HELP_SIZE = (
-    "输出尺寸。默认 auto（由服务端按 quality 等决定）。"
-    "常用: auto | 1024x1024(方1K) | 1536x1024(横1.5K) | 1024x1536(竖1.5K) | "
-    "2048x2048(方2K) | 2048x1152(横2K) | 3840x2160(4K横) | 2160x3840(4K竖)。"
-    "是否支持 2K/4K 取决于供应商 profile。"
-    "【重要】2K/4K 往往要数分钟且可能按张计费：Agent/自动化务必用 "
-    "「submit + status」异步，不要用同步 generate/edit，以免工具调用超时导致白花钱。"
-)
+HELP_SIZE = format_size_help()
 HELP_QUALITY = (
     "质量档位。默认 auto。"
     "auto=服务端自选; low=快/草稿; medium=均衡; high=细节最多、更慢更贵。"
@@ -318,6 +312,14 @@ def _effective_output_format(output_format: str, transparent: str | None) -> str
     return "png" if transparent else output_format
 
 
+def _resolve_size_arg(size: str | None) -> str:
+    try:
+        return resolve_size(size)
+    except SizeError as exc:
+        _die(str(exc))
+    return "auto"  # unreachable
+
+
 def _profile_public_view(prof: Profile, *, is_active: bool) -> dict[str, Any]:
     """给 profiles / --json 用的公开信息，绝不包含密钥。"""
     opts = dict(prof.options or {})
@@ -423,6 +425,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     _validate_n(args.n)
     transparent = _normalize_transparent(getattr(args, "transparent", None))
     output_format = _effective_output_format(args.output_format, transparent)
+    size = _resolve_size_arg(args.size)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=not args.dry_run)
@@ -448,7 +451,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         "model": model,
         "prompt": args.prompt,
         "n": args.n,
-        "size": args.size,
+        "size": size,
         "quality": args.quality,
         "output_format": output_format,
         "moderation": args.moderation,
@@ -457,17 +460,19 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         body["response_format"] = "b64_json"
 
     if args.dry_run:
-        _print_json(
-            {
-                "mode": "generate",
-                "profile": profile.name,
-                "type": profile.type,
-                "endpoint": "images/generations",
-                "body": body,
-                "transparent": transparent,
-                "outputs": [str(p) for p in paths],
-            }
-        )
+        payload: dict[str, Any] = {
+            "mode": "generate",
+            "profile": profile.name,
+            "type": profile.type,
+            "endpoint": "images/generations",
+            "body": body,
+            "transparent": transparent,
+            "outputs": [str(p) for p in paths],
+        }
+        if args.size != size:
+            payload["size_input"] = args.size
+            payload["size_resolved"] = size
+        _print_json(payload)
         return 0
 
     try:
@@ -475,7 +480,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
             profile,
             prompt=args.prompt,
             model=args.model,
-            size=args.size,
+            size=size,
             quality=args.quality,
             n=args.n,
             output_format=output_format,
@@ -505,6 +510,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     _validate_n(args.n)
     transparent = _normalize_transparent(getattr(args, "transparent", None))
     output_format = _effective_output_format(args.output_format, transparent)
+    size = _resolve_size_arg(args.size)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=not args.dry_run)
@@ -530,7 +536,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         "model": model,
         "prompt": args.prompt,
         "n": args.n,
-        "size": args.size,
+        "size": size,
         "quality": args.quality,
         "output_format": output_format,
         "moderation": args.moderation,
@@ -541,16 +547,18 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     }
 
     if args.dry_run:
-        _print_json(
-            {
-                "mode": "edit",
-                "profile": profile.name,
-                "type": profile.type,
-                "endpoint": "images/edits",
-                **meta,
-                "outputs": [str(p) for p in paths],
-            }
-        )
+        payload = {
+            "mode": "edit",
+            "profile": profile.name,
+            "type": profile.type,
+            "endpoint": "images/edits",
+            **meta,
+            "outputs": [str(p) for p in paths],
+        }
+        if args.size != size:
+            payload["size_input"] = args.size
+            payload["size_resolved"] = size
+        _print_json(payload)
         return 0
 
     try:
@@ -560,7 +568,7 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             image_paths=list(args.images),
             mask_path=args.mask,
             model=args.model,
-            size=args.size,
+            size=size,
             quality=args.quality,
             n=args.n,
             output_format=output_format,
@@ -591,6 +599,7 @@ def _cmd_submit_generate(args: argparse.Namespace) -> int:
     _validate_n(args.n)
     transparent = _normalize_transparent(getattr(args, "transparent", None))
     output_format = _effective_output_format(args.output_format, transparent)
+    size = _resolve_size_arg(args.size)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=True)
@@ -605,7 +614,7 @@ def _cmd_submit_generate(args: argparse.Namespace) -> int:
             model=args.model,
             timeout=args.timeout,
             prompt=args.prompt,
-            size=args.size,
+            size=size,
             quality=args.quality,
             n=args.n,
             output_format=output_format,
@@ -642,6 +651,7 @@ def _cmd_submit_edit(args: argparse.Namespace) -> int:
     _validate_n(args.n)
     transparent = _normalize_transparent(getattr(args, "transparent", None))
     output_format = _effective_output_format(args.output_format, transparent)
+    size = _resolve_size_arg(args.size)
     try:
         cfg = load_config(args.config, require_api_key=False)
         profile = cfg.get_profile(args.profile, require_api_key=True)
@@ -659,7 +669,7 @@ def _cmd_submit_edit(args: argparse.Namespace) -> int:
             images=list(args.images),
             mask=args.mask,
             input_fidelity=args.input_fidelity,
-            size=args.size,
+            size=size,
             quality=args.quality,
             n=args.n,
             output_format=output_format,
